@@ -103,9 +103,10 @@ extension ImageCollectionViewController: UICollectionViewDelegateFlowLayout {
         if let imageCell = cell as? ImageCollectionViewCell {
             DispatchQueue.global(qos: .userInitiated).async {
                 if let url = self.gallery?.collection[indexPath.row].url {
-                    let fetchedImage = self.fetchImage(url: url)
+//                    let fetchedImage = self.fetchImage(url: url, imageCell: imageCell)
                     DispatchQueue.main.async {
-                        imageCell.imageView.image = fetchedImage
+//                        imageCell.imageView.image = fetchedImage
+                        self.fetchImage(url: url, imageCell: imageCell)
                     }
                 }
             }
@@ -122,15 +123,36 @@ extension ImageCollectionViewController: UICollectionViewDelegateFlowLayout {
         return CGSize(width: cellWidth, height: cellHeight)
     }
     
-    private func fetchImage(url: URL) -> UIImage? {
-        let data = try? Data(contentsOf: url)
-        if let image = data {
-            return UIImage(data: image)
+    private func fetchImage(url: URL, imageCell: ImageCollectionViewCell) {
+        let sharedCache = URLCache.shared
+        let request = URLRequest(url: url)
+        if let response = sharedCache.cachedResponse(for: request) {
+            DispatchQueue.main.async {
+                imageCell.imageView.image = UIImage(data: response.data)
+            }
         } else {
-            return nil
+            // https://developer.apple.com/documentation/foundation/url_loading_system/fetching_website_data_into_memory
+            let task = URLSession.shared.dataTask(with: url) { (data, response, error) in
+                if let error = error {
+                    print(error)
+                    return
+                }
+                guard let httpResponse = response as? HTTPURLResponse,
+                    (200...299).contains(httpResponse.statusCode) else {
+                        print(error as Any)
+                        return
+                }
+                if let data = data, let response = response {
+                    let cachedResponse = CachedURLResponse(response: response, data: data)
+                    sharedCache.storeCachedResponse(cachedResponse, for: request)
+                    DispatchQueue.main.async {
+                        imageCell.imageView.image = UIImage(data: data)
+                    }
+                }
+            }
+            task.resume()
         }
     }
-    
 }
 
 // MARK: - UICollectionView Drag Delegate
